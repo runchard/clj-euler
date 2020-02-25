@@ -1,5 +1,4 @@
-(ns clj-euler.q7
-  (:require [clojure.data.priority-map :refer [priority-map]]))
+(ns clj-euler.q7)
 
 (defn prime?
   [n possible-primes]
@@ -16,37 +15,75 @@
         (recur new)))))
 
 
-(defn update-first-values
-  [p-map v]
-  ;; (println '[p-map v] [p-map v])
+(defn incremental-sieve-prime-seq-basic
+  ([]
+   (incremental-sieve-prime-seq-basic {} 2))
+  ([p-cache prime-candidate]
+   (lazy-seq
+    (if-let [base-primes (p-cache prime-candidate)]
+      (incremental-sieve-prime-seq-basic
+       (reduce #(update %
+                        (+ %2 prime-candidate)
+                        (fnil conj [])
+                        %2)
+               (dissoc p-cache prime-candidate)
+               base-primes)
+       (inc prime-candidate))
+      (cons prime-candidate
+            (incremental-sieve-prime-seq-basic
+             (assoc p-cache
+                    (+ prime-candidate prime-candidate)
+                    [prime-candidate])
+             (inc prime-candidate)))))))
 
-  (reduce #(update % (first %2) + (first %2))
-          p-map
-          (subseq p-map = v)))
 
 (defn incremental-sieve-prime-seq
   ([]
-   ;; TODO: can do some technique make prime seq faster
-   (incremental-sieve-prime-seq (priority-map) 2))
+   (concat [2 3] (incremental-sieve-prime-seq {9 [3]} 5)))
   ([p-cache prime-candidate]
    (lazy-seq
-    (let [[base-prime next-compose] (first p-cache)]
-      (if (= next-compose prime-candidate)
-        (incremental-sieve-prime-seq
-         (update-first-values p-cache prime-candidate)
-         (inc prime-candidate))
-        (cons prime-candidate               ;prime case
-              (incremental-sieve-prime-seq
-               (assoc p-cache
-                      prime-candidate
-                      (+ prime-candidate
-                         prime-candidate))
-               (inc prime-candidate))))))))
+    (if-let [base-primes (p-cache prime-candidate)]
+      (incremental-sieve-prime-seq
+       (reduce #(update %
+                        (+ %2 %2 prime-candidate)
+                        (fnil conj [])
+                        %2)
+               (dissoc p-cache prime-candidate)
+               base-primes)
+       (+ prime-candidate 2))
+      (cons prime-candidate
+            (incremental-sieve-prime-seq
+             (assoc p-cache
+                    (* prime-candidate 3)
+                    [prime-candidate])
+             (+ prime-candidate 2)))))))
+
+;;; copied from `clojure.contrib.lazy-seqs/primes`
+(def primes
+  (concat
+   [2 3 5 7]
+   (lazy-seq
+    (let [primes-from
+          (fn primes-from [n [f & r]]
+            (if (some #(zero? (rem n %))
+                      (take-while #(<= (* % %) n) primes))
+              (recur (+ n f) r)
+              (lazy-seq (cons n (primes-from (+ n f) r)))))
+          wheel (cycle [2 4 2 4 6 2 6 4 2 4 6 6 2 6  4  2
+                        6 4 6 8 4 2 4 2 4 8 6 4 6 2  4  6
+                        2 6 6 4 2 4 6 2 6 4 2 4 2 10 2 10])]
+      (primes-from 11 wheel)))))
 
 
-(time (doall (take 1 (drop 10000 (incremental-sieve-prime-seq)))))
+(assert (= (last (last (take 1 (drop 4 (iterate prime-seq [2 3])))))
+           13))
+(assert (= (last (last (take 1 (drop 9999 (iterate prime-seq [2 3])))))
+           104743))
 
-;; (assert (= (last (last (take 1 (drop 4 (iterate prime-seq [2 3])))))
-;;            13))
-;; (assert (= (last (last (take 1 (drop 9999 (iterate prime-seq [2 3])))))
-;;            104743))
+(assert (= (first (drop 10000 (incremental-sieve-prime-seq-basic)))
+           104743))
+
+(assert (= (first (drop 10000 (incremental-sieve-prime-seq)))
+           104743))
+
+(assert (= (first (drop 10000 primes)) 104743))
